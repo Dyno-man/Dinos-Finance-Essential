@@ -16,4 +16,4 @@ Amount INT
 
 SELECT * FROM expenses;
 
-sudo docker exec -it (container name) psql -U (db_name)
+sudo docker exec -it (container name) psql -U (db_user) -d (db_name)
