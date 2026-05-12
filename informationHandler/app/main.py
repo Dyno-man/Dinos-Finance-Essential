@@ -1,43 +1,114 @@
-from fastapi import FastAPI, UploadFile
-from PIL import Image
-import io
-import requests
-from dotenv import load_dotenv
-import os 
+from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
-load_dotenv()
+from app.database import check_database, get_session
+from app.dependencies import get_or_create_dev_user
+from app.models import OCRResult, Receipt, ReceiptImage
+from app.ocr_client import OCRClient, OCRClientError, get_ocr_client
+from app.storage import LocalReceiptStorage, get_storage
+from app.upload_validation import read_valid_image
 
 
-IMAGE_CONTAINER_ADDRESS = os.getenv('IMAGE_CONTAINER_ADDRESS')
-DB_CONTAINER_ADDRESS = os.getenv('DB_CONTAINER_ADDRESS')
+app = FastAPI(title="Receipt Finance Tracker API")
 
-app = FastAPI()
 
-# Health check to make sure backend is accesible
-@app.get('/health')
-async def health():
-    response = requests.get(IMAGE_CONTAINER_ADDRESS)
-    print(response)
-    return response.json()
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok", "service": "receipt-api"}
+
+
+@app.get("/health/deep")
+async def deep_health(ocr_client: OCRClient = Depends(get_ocr_client)) -> dict[str, bool]:
+    database_ok = False
+    ocr_ok = False
+
+    try:
+        database_ok = check_database()
+    except Exception:
+        database_ok = False
+
+    try:
+        ocr_ok = await ocr_client.health()
+    except Exception:
+        ocr_ok = False
+
+    return {"database": database_ok, "ocr": ocr_ok}
+
+
+@app.post("/receipts/upload")
+async def upload_receipt(
+    file: UploadFile,
+    session: Session = Depends(get_session),
+    ocr_client: OCRClient = Depends(get_ocr_client),
+    storage: LocalReceiptStorage = Depends(get_storage),
+) -> dict:
+    contents, digest = await read_valid_image(file)
+    user = get_or_create_dev_user(session)
+
+    receipt = Receipt(user_id=user.id, source="web", status="processing")
+    session.add(receipt)
+    session.flush()
+
+    storage_path = storage.save_original(user.id, receipt.id, file.filename or "receipt", contents)
+    image = ReceiptImage(
+        receipt_id=receipt.id,
+        storage_path=storage_path,
+        original_filename=file.filename,
+        mime_type=file.content_type,
+        size_bytes=len(contents),
+        sha256=digest,
+    )
+    session.add(image)
+    session.flush()
+
+    try:
+        ocr_response = await ocr_client.parse_image(file.filename or "receipt", file.content_type, contents)
+    except OCRClientError as exc:
+        receipt.status = "failed"
+        receipt.notes = f"OCR failed: {exc}"
+        session.commit()
+        raise HTTPException(status_code=502, detail="OCR service failed") from exc
+
+    parsed = ocr_response.get("parsed", {})
+    raw_text = ocr_response.get("raw_text", [])
+    if not isinstance(raw_text, list):
+        raw_text = [str(raw_text)]
+
+    receipt.amount_cents = parsed.get("total_cents")
+    receipt.merchant_name = parsed.get("merchant_name")
+    receipt.status = "pending_review"
+
+    ocr_result = OCRResult(
+        receipt_id=receipt.id,
+        raw_text="\n".join(str(item) for item in raw_text),
+        raw_blocks={"raw_text": raw_text},
+        parsed_total_cents=parsed.get("total_cents"),
+        parsed_merchant=parsed.get("merchant_name"),
+        parser_version=ocr_response.get("parser_version", "unknown"),
+        confidence=ocr_response.get("confidence"),
+    )
+    session.add(ocr_result)
+    session.commit()
+    session.refresh(receipt)
+
+    return {
+        "receipt_id": receipt.id,
+        "status": receipt.status,
+        "parsed": {
+            "total_cents": receipt.amount_cents,
+            "merchant_name": receipt.merchant_name,
+            "purchased_at": parsed.get("purchased_at"),
+        },
+        "parser_version": ocr_result.parser_version,
+    }
+
 
 @app.post("/upload")
-async def send_to_image_container(file: UploadFile):
-# Take file name and create a save for it inside of the container    
-    filepath_save = f'/code/app/images/{file.filename}'
-
-# Take image and wait for contents to read all of it, then open the image in bytes to double check it's an image, then save the image to the container
-    contents = await file.read()
-    img = Image.open(io.BytesIO(contents))
-    img.save(filepath_save)
-    
-# Open the image as bytes, create a file json obj with the necessary data    
-    with open(filepath_save, 'rb') as img_file:
-        files = {
-            'file' : (file.filename, img_file.read(), file.content_type)
-        }
-
-# Send the image obj to the backend docker container to be processed
-        req = requests.post(f'{IMAGE_CONTAINER_ADDRESS}/upload', files=files)
-
-# Return the information to the sender
-        return req.json()
+async def legacy_upload(
+    file: UploadFile,
+    session: Session = Depends(get_session),
+    ocr_client: OCRClient = Depends(get_ocr_client),
+    storage: LocalReceiptStorage = Depends(get_storage),
+) -> dict:
+    result = await upload_receipt(file, session, ocr_client, storage)
+    return result

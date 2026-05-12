@@ -1,5 +1,9 @@
 fastapi[standard]
 Pillow
-requests
 python-dotenv
 psycopg[binary]
+SQLAlchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+httpx
+python-multipart
+pytest

@@ -1,27 +1,40 @@
 services:
-  backend:
-    image: img-processor:latest
+  api:
+    build:
+      context: ./informationHandler
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - OCR_SERVICE_URL=http://ocr:80
+      - RECEIPT_STORAGE_PATH=/data/receipt_uploads
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-10}
     ports:
-      - "80:80"
-    restart: on-failure
-  middleware:
-    image: infor-container:latest
-    ports:
-      - "81:80"
-    restart: on-failure
+      - "8000:80"
+    volumes:
+      - receipt-uploads:/data/receipt_uploads
+    depends_on:
+      - db
+      - ocr
+    restart: unless-stopped
+
+  ocr:
+    build:
+      context: ./imageContainer
+    environment:
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-10}
+      - OCR_TEMP_UPLOAD_DIR=/tmp/receipt-ocr
+    restart: unless-stopped
+
   db:
     image: postgres
-    restart: always
+    restart: unless-stopped
     shm_size: 128mb
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_DB=${POSTGRES_DB}
-    ports:
-      - "5432:5432"
     volumes:
-      - db-data:/var/lib/postgresql
+      - db-data:/var/lib/postgresql/data
 
 volumes:
   db-data:
-    
+  receipt-uploads:

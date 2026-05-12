@@ -1,70 +1,65 @@
-from fastapi import FastAPI, UploadFile
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+
 import easyocr
+from fastapi import FastAPI, HTTPException, UploadFile
 from PIL import Image
-import io
 
-"""Helper functions for the file"""
+from app.config import settings
+from app.parser import PARSER_VERSION, find_total_cents
 
-def is_float(number):
+
+app = FastAPI(title="Receipt OCR Service")
+reader = easyocr.Reader(["en"])
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok", "service": settings.service_name}
+
+
+@app.post("/ocr/upload")
+async def upload_for_ocr(file: UploadFile) -> dict:
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    if len(contents) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Uploaded file is too large")
+
+    temp_dir = Path(settings.temp_upload_dir)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    suffix = Path(file.filename or "receipt").suffix or ".img"
+    temp_path = None
     try:
-        float(number)
-        return True
-    except ValueError:
-        return False
+        with NamedTemporaryFile(delete=False, suffix=suffix, dir=temp_dir) as temp_file:
+            temp_file.write(contents)
+            temp_path = Path(temp_file.name)
 
-# Return a total cost, sometimes total comes before or after the total price so this function looks ahead
-# and behind to see where the number may be hiding
-def find_total(result):
-    #Take the list and find the keyword 'total'
-    for i in range(len(result)):
-        if 'subtotal' in result[i].lower():
-            continue
-        elif 'total' in result[i].lower():
-            if is_float(result[i-1].replace(' ', '')):
-                return float(result[i-1].replace(' ', ''))
-            elif i+1 != len(result) and is_float(result[i+1].replace(' ', '')):
-                return float(result[i+1].replace(' ', ''))
-    return -1
+        try:
+            with Image.open(temp_path) as image:
+                image.verify()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Uploaded file is not a valid image") from exc
 
-#This will take in the filepath as the image will be temporarily stored to the docker image
-# and once the image has been processed and total found. We will return number
-def scan_image(model, filepath):
-    result = model.readtext(filepath, detail = 0)
-    cost = find_total(result)
-    return cost
-
-model = easyocr.Reader(['en'])
+        raw_text = reader.readtext(str(temp_path), detail=0)
+        total_cents = find_total_cents(raw_text)
+        return {
+            "raw_text": raw_text,
+            "parsed": {
+                "total_cents": total_cents,
+                "merchant_name": raw_text[0] if raw_text else None,
+                "purchased_at": None,
+            },
+            "confidence": None,
+            "parser_version": PARSER_VERSION,
+        }
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
-"""This is the Router"""
-
-app = FastAPI()
-
-@app.get('/')
-def read_root():
-    return {"Hello": "World"}
-
-# Write a route that accepts incoming images and passes them to the active OCR model. The model turns on as soon as the FASTAPI middleware is activated.
-@app.get('/process/{filepath}')
-async def process_image(filepath):
-    cost = scan_image(model, filepath)
-    return {'cost' : cost}
-
-
-@app.post('/upload')
-async def store_uploaded_file(file: UploadFile):
-    #Take the uploaded picture, check to see if it is actually a picture
-    filepath = f"/code/app/images/{file.filename}"
-    try:
-        contents = await file.read()
-        img = Image.open(io.BytesIO(contents))
-        img.save(filepath)
-    except Exception as e:
-        return {"Error": "Failed to upload open file: " + str(e)}
-
-    #If Object is an img, then run it through the scan_image function
-    result = scan_image(model, filepath)
-
-    return {"Ok" : result}
-
-    
+@app.post("/upload")
+async def legacy_upload(file: UploadFile) -> dict:
+    result = await upload_for_ocr(file)
+    return {"Ok": result["parsed"]["total_cents"]}
