@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import upload_receipt
-from app.models import Base, OCRResult, Receipt, ReceiptImage
+from app.models import Base, OCRResult, Receipt, ReceiptImage, User
+from app.security import hash_password
 from app.storage import LocalReceiptStorage
 
 
@@ -54,6 +55,13 @@ def make_session_factory() -> sessionmaker[Session]:
     return TestingSessionLocal
 
 
+def make_user(session: Session, username: str = "grant") -> User:
+    user = User(username=username, email=f"{username}@example.com", password_hash=hash_password("long-password"))
+    session.add(user)
+    session.flush()
+    return user
+
+
 class FakeUploadFile:
     def __init__(self, filename: str, contents: bytes, content_type: str) -> None:
         self.filename = filename
@@ -71,12 +79,14 @@ def upload_file(name: str, contents: bytes, content_type: str) -> FakeUploadFile
 def test_upload_creates_receipt_image_and_ocr_result(tmp_path) -> None:
     session_factory = make_session_factory()
     with session_factory() as session:
+        user = make_user(session)
         body = asyncio.run(
             upload_receipt(
                 upload_file("receipt.png", make_png(), "image/png"),
                 session,
                 FakeOCRClient(),
                 LocalReceiptStorage(str(tmp_path)),
+                user,
             )
         )
         assert body["status"] == "pending_review"
@@ -98,6 +108,7 @@ def test_upload_creates_receipt_image_and_ocr_result(tmp_path) -> None:
 def test_invalid_image_is_rejected(tmp_path) -> None:
     session_factory = make_session_factory()
     with session_factory() as session:
+        user = make_user(session)
         with pytest.raises(HTTPException) as exc:
             asyncio.run(
                 upload_receipt(
@@ -105,6 +116,7 @@ def test_invalid_image_is_rejected(tmp_path) -> None:
                     session,
                     FakeOCRClient(),
                     LocalReceiptStorage(str(tmp_path)),
+                    user,
                 )
             )
         assert exc.value.status_code == 400
@@ -113,6 +125,7 @@ def test_invalid_image_is_rejected(tmp_path) -> None:
 def test_ocr_failure_marks_receipt_failed(tmp_path) -> None:
     session_factory = make_session_factory()
     with session_factory() as session:
+        user = make_user(session)
         with pytest.raises(HTTPException) as exc:
             asyncio.run(
                 upload_receipt(
@@ -120,6 +133,7 @@ def test_ocr_failure_marks_receipt_failed(tmp_path) -> None:
                     session,
                     FailingOCRClient(),
                     LocalReceiptStorage(str(tmp_path)),
+                    user,
                 )
             )
         assert exc.value.status_code == 502

@@ -15,6 +15,14 @@ class Settings:
     dev_username: str = os.getenv("DEV_USER_USERNAME", "dev")
     dev_email: str = os.getenv("DEV_USER_EMAIL", "dev@example.local")
     dev_password_hash: str = os.getenv("DEV_USER_PASSWORD_HASH", "dev-only-not-authenticated")
+    session_cookie_name: str = os.getenv("SESSION_COOKIE_NAME", "receipt_tracker_session")
+    session_secret: str = os.getenv("SESSION_SECRET", "dev-session-secret-change-me")
+    session_ttl_days: int = int(os.getenv("SESSION_TTL_DAYS", "7"))
+    cookie_secure: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+    cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax")
+    frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+    login_rate_limit_attempts: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
+    login_rate_limit_window_seconds: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
 
     @property
     def max_upload_bytes(self) -> int:

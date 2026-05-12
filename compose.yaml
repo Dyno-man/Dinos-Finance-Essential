@@ -1,4 +1,16 @@
 services:
+  web:
+    build:
+      context: ./web
+    environment:
+      - API_BASE_URL=http://api:80
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
   api:
     build:
       context: ./informationHandler
@@ -7,6 +19,14 @@ services:
       - OCR_SERVICE_URL=http://ocr:80
       - RECEIPT_STORAGE_PATH=/data/receipt_uploads
       - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-10}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - SESSION_COOKIE_NAME=${SESSION_COOKIE_NAME:-receipt_tracker_session}
+      - SESSION_TTL_DAYS=${SESSION_TTL_DAYS:-7}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - COOKIE_SAMESITE=${COOKIE_SAMESITE:-lax}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:3000}
+      - LOGIN_RATE_LIMIT_ATTEMPTS=${LOGIN_RATE_LIMIT_ATTEMPTS:-5}
+      - LOGIN_RATE_LIMIT_WINDOW_SECONDS=${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
     ports:
       - "8000:80"
     volumes:
@@ -25,7 +45,7 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres
+    image: postgres:17
     restart: unless-stopped
     shm_size: 128mb
     environment:

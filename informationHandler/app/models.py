@@ -44,6 +44,19 @@ class User(Base):
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Session(Base):
+    __tablename__ = "sessions"
+    __table_args__ = (UniqueConstraint("session_token_hash", name="uq_sessions_token_hash"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uuid_string)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    session_token_hash: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user: Mapped[User] = relationship()
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
