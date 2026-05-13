@@ -4,8 +4,25 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadReceipt } from "@/lib/client-api";
 
-const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const allowedMimeTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/pjpeg"]);
 const maxBytes = 10 * 1024 * 1024;
+
+function sniffImageMime(file: File): string | null {
+  if (file.type && allowedMimeTypes.has(file.type)) {
+    return file.type;
+  }
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (lower.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lower.endsWith(".webp")) {
+    return "image/webp";
+  }
+  return null;
+}
 
 export function ReceiptUploadDropzone() {
   const router = useRouter();
@@ -19,7 +36,7 @@ export function ReceiptUploadDropzone() {
       return;
     }
     setError("");
-    if (!allowedTypes.has(file.type)) {
+    if (!sniffImageMime(file)) {
       setError("Use a JPG, PNG, or WebP image.");
       return;
     }
@@ -60,7 +77,7 @@ export function ReceiptUploadDropzone() {
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/jpeg,image/jpg,image/png,image/webp,image/pjpeg,.jpg,.jpeg,.png,.webp"
         capture="environment"
         onChange={(event) => void submitFile(event.target.files?.[0])}
       />
