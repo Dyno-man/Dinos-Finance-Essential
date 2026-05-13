@@ -6,6 +6,7 @@ import { uploadReceipt } from "@/lib/client-api";
 
 const allowedMimeTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/pjpeg"]);
 const maxBytes = 10 * 1024 * 1024;
+type UploadState = "ready" | "uploading" | "processing" | "duplicate" | "failed";
 
 function sniffImageMime(file: File): string | null {
   if (file.type && allowedMimeTypes.has(file.type)) {
@@ -28,6 +29,8 @@ export function ReceiptUploadDropzone() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState("Choose a JPG, PNG, or WebP receipt image.");
+  const [uploadState, setUploadState] = useState<UploadState>("ready");
+  const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -37,20 +40,40 @@ export function ReceiptUploadDropzone() {
     }
     setError("");
     if (!sniffImageMime(file)) {
+      setUploadState("failed");
       setError("Use a JPG, PNG, or WebP image.");
       return;
     }
     if (file.size > maxBytes) {
+      setUploadState("failed");
       setError("Receipt images must be 10 MB or smaller.");
       return;
     }
     setBusy(true);
-    setStatus("Uploading and running OCR...");
+    setUploadState("uploading");
+    setProgress(0);
+    setStatus("Uploading receipt image...");
     try {
-      const result = await uploadReceipt(file);
+      const result = await uploadReceipt(file, (percent) => {
+        setProgress(percent);
+        if (percent >= 100) {
+          setUploadState("processing");
+          setStatus("Processing receipt with OCR...");
+        } else {
+          setStatus(`Uploading receipt image... ${percent}%`);
+        }
+      });
+      if (result.duplicate) {
+        setUploadState("duplicate");
+        setStatus(result.message ?? "This receipt was already uploaded. Opening the existing receipt...");
+      } else {
+        setUploadState("processing");
+        setStatus("OCR complete. Opening receipt review...");
+      }
       router.push(`/receipts/${result.receipt_id}`);
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : "Upload failed");
+      setUploadState("failed");
       setStatus("Choose another receipt image.");
     } finally {
       setBusy(false);
@@ -83,6 +106,17 @@ export function ReceiptUploadDropzone() {
       />
       <strong>{busy ? "Processing receipt" : "Upload receipt"}</strong>
       <p>{status}</p>
+      {uploadState === "uploading" || uploadState === "processing" ? (
+        <div className="upload-progress" aria-label="Upload progress">
+          <div className="upload-progress-track">
+            <div
+              className="upload-progress-fill"
+              style={{ width: `${uploadState === "processing" ? 100 : progress}%` }}
+            />
+          </div>
+          <span>{uploadState === "processing" ? "Processing" : `${progress}%`}</span>
+        </div>
+      ) : null}
       <button type="button" disabled={busy}>
         Select image
       </button>

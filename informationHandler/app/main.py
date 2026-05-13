@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
@@ -23,7 +23,7 @@ from app.database import check_database, get_session
 from app.models import Category, IntegrationConnection, OCRResult, Receipt, ReceiptImage, Subscription, User, now_utc
 from app.ocr_client import OCRClient, OCRClientError, get_ocr_client
 from app.storage import LocalReceiptStorage, get_storage
-from app.upload_validation import read_valid_image
+from app.upload_validation import read_valid_image, upload_error
 
 
 app = FastAPI(title="Receipt Finance Tracker API")
@@ -64,6 +64,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(HTTPException)
+async def structured_http_error_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    if isinstance(exc.detail, dict) and "code" in exc.detail and "message" in exc.detail:
+        error = exc.detail
+    else:
+        error = {
+            "code": "request_error",
+            "message": str(exc.detail) if exc.detail else "Request failed.",
+        }
+    return JSONResponse(status_code=exc.status_code, content={"error": error}, headers=exc.headers)
 
 
 def ensure_default_categories(session: Session) -> None:
@@ -150,6 +162,17 @@ def parse_datetime_filter(value: str | None, end_of_day: bool = False) -> dateti
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+def parse_optional_datetime(value: object) -> datetime | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "receipt-api"}
@@ -217,9 +240,28 @@ async def upload_receipt(
     storage: LocalReceiptStorage = Depends(get_storage),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    contents, digest = await read_valid_image(file)
+    contents, digest, detected_mime_type = await read_valid_image(file)
 
-    receipt = Receipt(user_id=current_user.id, source="web", status="processing")
+    existing_receipt = session.scalar(
+        select(Receipt)
+        .join(ReceiptImage)
+        .where(
+            Receipt.user_id == current_user.id,
+            Receipt.source == "web",
+            Receipt.deleted_at.is_(None),
+            ReceiptImage.sha256 == digest,
+        )
+        .order_by(desc(Receipt.created_at))
+    )
+    if existing_receipt is not None:
+        return {
+            "receipt_id": existing_receipt.id,
+            "status": existing_receipt.status,
+            "duplicate": True,
+            "message": "This receipt image was already uploaded. Opening the existing receipt.",
+        }
+
+    receipt = Receipt(user_id=current_user.id, source="web", source_external_id=digest, status="processing")
     session.add(receipt)
     session.flush()
 
@@ -228,7 +270,7 @@ async def upload_receipt(
         receipt_id=receipt.id,
         storage_path=storage_path,
         original_filename=file.filename,
-        mime_type=file.content_type,
+        mime_type=detected_mime_type,
         size_bytes=len(contents),
         sha256=digest,
     )
@@ -241,22 +283,30 @@ async def upload_receipt(
         receipt.status = "failed"
         receipt.notes = f"OCR failed: {exc}"
         session.commit()
-        raise HTTPException(status_code=502, detail="OCR service failed") from exc
+        raise upload_error(
+            502,
+            "ocr_unavailable",
+            "The receipt was saved, but OCR processing failed. Open the receipt to review or try again later.",
+        ) from exc
 
     parsed = ocr_response.get("parsed", {})
     raw_text = ocr_response.get("raw_text", [])
     if not isinstance(raw_text, list):
         raw_text = [str(raw_text)]
+    parsed_date = parse_optional_datetime(parsed.get("purchased_at"))
 
     receipt.amount_cents = parsed.get("total_cents")
     receipt.merchant_name = parsed.get("merchant_name")
+    receipt.purchased_at = parsed_date
     receipt.status = "pending_review"
+    receipt.updated_at = now_utc()
 
     ocr_result = OCRResult(
         receipt_id=receipt.id,
         raw_text="\n".join(str(item) for item in raw_text),
-        raw_blocks={"raw_text": raw_text},
+        raw_blocks={"raw_text": raw_text, "response": ocr_response},
         parsed_total_cents=parsed.get("total_cents"),
+        parsed_date=parsed_date,
         parsed_merchant=parsed.get("merchant_name"),
         parser_version=ocr_response.get("parser_version", "unknown"),
         confidence=ocr_response.get("confidence"),
@@ -268,10 +318,11 @@ async def upload_receipt(
     return {
         "receipt_id": receipt.id,
         "status": receipt.status,
+        "duplicate": False,
         "parsed": {
             "total_cents": receipt.amount_cents,
             "merchant_name": receipt.merchant_name,
-            "purchased_at": parsed.get("purchased_at"),
+            "purchased_at": receipt.purchased_at.isoformat() if receipt.purchased_at else None,
         },
         "parser_version": ocr_result.parser_version,
     }

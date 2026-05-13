@@ -118,8 +118,8 @@ Index(
     Receipt.source,
     Receipt.source_external_id,
     unique=True,
-    sqlite_where=Receipt.source_external_id.is_not(None),
-    postgresql_where=Receipt.source_external_id.is_not(None),
+    sqlite_where=Receipt.source_external_id.is_not(None) & Receipt.deleted_at.is_(None),
+    postgresql_where=Receipt.source_external_id.is_not(None) & Receipt.deleted_at.is_(None),
 )
 
 

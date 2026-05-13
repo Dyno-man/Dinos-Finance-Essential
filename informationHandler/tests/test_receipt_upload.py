@@ -15,10 +15,14 @@ from app.storage import LocalReceiptStorage
 
 
 class FakeOCRClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def health(self) -> bool:
         return True
 
     async def parse_image(self, filename: str, content_type: str | None, contents: bytes) -> dict:
+        self.calls += 1
         return {
             "raw_text": ["WALMART", "TOTAL", "12.34"],
             "parsed": {
@@ -38,10 +42,14 @@ class FailingOCRClient:
         raise OCRClientError("ocr unavailable")
 
 
-def make_png() -> bytes:
+def make_image(image_format: str) -> bytes:
     buffer = BytesIO()
-    Image.new("RGB", (2, 2), "white").save(buffer, format="PNG")
+    Image.new("RGB", (2, 2), "white").save(buffer, format=image_format)
     return buffer.getvalue()
+
+
+def make_png() -> bytes:
+    return make_image("PNG")
 
 
 def make_session_factory() -> sessionmaker[Session]:
@@ -98,11 +106,45 @@ def test_upload_creates_receipt_image_and_ocr_result(tmp_path) -> None:
         assert receipt.amount_cents == 1234
         assert receipt.merchant_name == "WALMART"
         assert receipt.status == "pending_review"
-        assert session.scalar(select(ReceiptImage)) is not None
+        assert receipt.source_external_id is not None
+        image = session.scalar(select(ReceiptImage))
+        assert image is not None
+        assert image.mime_type == "image/png"
         result = session.scalar(select(OCRResult))
         assert result is not None
         assert result.raw_text == "WALMART\nTOTAL\n12.34"
         assert result.parsed_total_cents == 1234
+        assert result.raw_blocks is not None
+        assert result.raw_blocks["raw_text"] == ["WALMART", "TOTAL", "12.34"]
+
+
+@pytest.mark.parametrize(
+    ("filename", "contents", "content_type", "expected_mime_type"),
+    [
+        ("receipt.jpg", make_image("JPEG"), "image/jpeg", "image/jpeg"),
+        ("receipt.png", make_image("PNG"), "image/png", "image/png"),
+        ("receipt.webp", make_image("WEBP"), "image/webp", "image/webp"),
+    ],
+)
+def test_upload_accepts_supported_image_formats(
+    tmp_path, filename: str, contents: bytes, content_type: str, expected_mime_type: str
+) -> None:
+    session_factory = make_session_factory()
+    with session_factory() as session:
+        user = make_user(session)
+        asyncio.run(
+            upload_receipt(
+                upload_file(filename, contents, content_type),
+                session,
+                FakeOCRClient(),
+                LocalReceiptStorage(str(tmp_path)),
+                user,
+            )
+        )
+
+        image = session.scalar(select(ReceiptImage))
+        assert image is not None
+        assert image.mime_type == expected_mime_type
 
 
 def test_invalid_image_is_rejected(tmp_path) -> None:
@@ -120,6 +162,91 @@ def test_invalid_image_is_rejected(tmp_path) -> None:
                 )
             )
         assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "invalid_file_type"
+
+
+def test_unsupported_valid_image_is_rejected(tmp_path) -> None:
+    session_factory = make_session_factory()
+    with session_factory() as session:
+        user = make_user(session)
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(
+                upload_receipt(
+                    upload_file("receipt.gif", make_image("GIF"), "image/gif"),
+                    session,
+                    FakeOCRClient(),
+                    LocalReceiptStorage(str(tmp_path)),
+                    user,
+                )
+            )
+        assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "invalid_file_type"
+
+
+def test_duplicate_upload_returns_existing_receipt_without_reprocessing(tmp_path) -> None:
+    session_factory = make_session_factory()
+    with session_factory() as session:
+        user = make_user(session)
+        ocr_client = FakeOCRClient()
+        contents = make_png()
+
+        first = asyncio.run(
+            upload_receipt(
+                upload_file("receipt.png", contents, "image/png"),
+                session,
+                ocr_client,
+                LocalReceiptStorage(str(tmp_path)),
+                user,
+            )
+        )
+        duplicate = asyncio.run(
+            upload_receipt(
+                upload_file("receipt-copy.png", contents, "image/png"),
+                session,
+                ocr_client,
+                LocalReceiptStorage(str(tmp_path)),
+                user,
+            )
+        )
+
+        assert duplicate["receipt_id"] == first["receipt_id"]
+        assert duplicate["duplicate"] is True
+        assert ocr_client.calls == 1
+        assert len(session.scalars(select(Receipt)).all()) == 1
+        assert len(session.scalars(select(ReceiptImage)).all()) == 1
+
+
+def test_duplicate_hash_is_scoped_to_user(tmp_path) -> None:
+    session_factory = make_session_factory()
+    with session_factory() as session:
+        grant = make_user(session, "grant")
+        other = make_user(session, "other")
+        ocr_client = FakeOCRClient()
+        contents = make_png()
+
+        first = asyncio.run(
+            upload_receipt(
+                upload_file("receipt.png", contents, "image/png"),
+                session,
+                ocr_client,
+                LocalReceiptStorage(str(tmp_path)),
+                grant,
+            )
+        )
+        second = asyncio.run(
+            upload_receipt(
+                upload_file("receipt.png", contents, "image/png"),
+                session,
+                ocr_client,
+                LocalReceiptStorage(str(tmp_path)),
+                other,
+            )
+        )
+
+        assert second["receipt_id"] != first["receipt_id"]
+        assert second["duplicate"] is False
+        assert ocr_client.calls == 2
+        assert len(session.scalars(select(Receipt)).all()) == 2
 
 
 def test_ocr_failure_marks_receipt_failed(tmp_path) -> None:
@@ -137,6 +264,7 @@ def test_ocr_failure_marks_receipt_failed(tmp_path) -> None:
                 )
             )
         assert exc.value.status_code == 502
+        assert exc.value.detail["code"] == "ocr_unavailable"
 
         receipt = session.scalar(select(Receipt))
         assert receipt is not None

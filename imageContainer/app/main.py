@@ -12,7 +12,7 @@ from app.parser import PARSER_VERSION, find_total_cents
 
 
 app = FastAPI(title="Receipt OCR Service")
-reader = easyocr.Reader(["en"])
+reader: easyocr.Reader | None = None
 
 # EasyOCR + OpenCV can crash with ``!ssize.empty()`` on ``cv2.resize`` when CRAFT
 # returns degenerate crops (seen on some JPEGs / phone photos). Upscale small images,
@@ -33,6 +33,13 @@ _READTEXT_KW = dict(
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": settings.service_name}
+
+
+def get_reader() -> easyocr.Reader:
+    global reader
+    if reader is None:
+        reader = easyocr.Reader(["en"], gpu=False)
+    return reader
 
 
 def _decode_rgb(contents: bytes) -> Image.Image:
@@ -69,11 +76,12 @@ def _save_temp_png(im: Image.Image, temp_dir: Path) -> Path:
     return out
 
 
-def _readtext_paths(paths: list[Path]) -> list[str]:
+def _readtext_paths(paths: list[Path], ocr_reader: easyocr.Reader | None = None) -> list[str]:
     last_exc: Exception | None = None
+    active_reader = ocr_reader or get_reader()
     for path in paths:
         try:
-            return reader.readtext(str(path), **_READTEXT_KW)
+            return active_reader.readtext(str(path), **_READTEXT_KW)
         except cv2.error as exc:
             last_exc = exc
             continue

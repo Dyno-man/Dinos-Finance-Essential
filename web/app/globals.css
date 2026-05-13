@@ -439,6 +439,31 @@ form {
   font-size: 24px;
 }
 
+.upload-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 0 auto 16px;
+  max-width: 420px;
+  color: #344054;
+  font-weight: 700;
+}
+
+.upload-progress-track {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: #eaecf0;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 160ms ease;
+}
+
 .image-preview {
   overflow: hidden;
   margin-bottom: 16px;
