@@ -53,3 +53,88 @@ So now we don't have to worry about losing data if the image goes up or down, ju
 Anyways now that that's done, I've also been playing around with the psycopg library so that I can communicate with the psql container and I got that working a little while ago. I just need to go ahead and write some functions for this so that everything is standardized. I guess I should probably add a primary key to the data as well, just been a minute since I've messed around with SQL type dbs. But I'll figure this out, I mean this data isn't even that complicated it's just numbers we will be storing with D/T amd the type of expense it is.
 
 Oooo I also keep forgetting I need to make a couple of different dicts so that I can start to hammer down on what goes where for grocery and stuff. In the front end I'll probably make it so that you can hard overide it just incase the OCR model fricks up cause it is not the best one in the world. Good enough for this though. 
+
+
+  Summary:
+
+  - Added FastAPI username/password auth with bcrypt password hashing.
+  - Added database-backed opaque sessions:
+      - New sessions SQLAlchemy model.
+      - New Alembic migration 20260512_0002_add_sessions.py.
+      - Session cookies are HTTP-only.
+      - Logout revokes DB session and clears cookie.
+  - Added auth endpoints:
+      - POST /auth/register
+      - POST /auth/login
+      - POST /auth/logout
+      - GET /auth/me
+  - Added get_current_user dependency.
+  - Protected receipt and integration routes.
+  - Replaced the old default dev-user receipt upload behavior with authenticated ownership.
+  - Added basic in-memory login rate limiting.
+  - Added CORS config for http://localhost:3000.
+  - Added backend auth tests and updated receipt upload tests.
+  - Removed the now-unused informationHandler/app/dependencies.py.
+
+  Frontend:
+
+  - Created new web/ Next.js TypeScript app.
+  - Added:
+      - /login
+      - /register
+      - protected /dashboard
+      - logout button
+      - browser/server API helpers
+      - proxy.ts route protection
+  - Added web service to compose.yaml.
+  - Verified npm run build passes.
+
+  Docker/runtime fixes:
+
+  - Original browser error was Failed to fetch because the API was not reachable.
+  - Root cause: Postgres was crash-looping.
+  - Postgres crash was caused by postgres:latest pulling PostgreSQL 18 against an
+    incompatible/partial local volume.
+  - Pinned database image to postgres:17.
+  - Added .env.example.
+  - Added missing local .env auth values:
+      - SESSION_SECRET
+      - MAX_UPLOAD_MB
+      - COOKIE_SECURE
+      - COOKIE_SAMESITE
+      - FRONTEND_ORIGIN
+  - Reset local Docker volumes with docker compose down -v.
+  - Rebuilt and restarted the stack.
+  - Ran migrations with:
+
+    docker compose exec api alembic -c alembic.ini upgrade head
+
+  - Verified:
+      - curl http://localhost:8000/health
+      - CORS preflight from http://localhost:3000
+      - POST /auth/register returns 200 OK and sets receipt_tracker_session.
+
+  Current run state:
+
+  - Web: http://localhost:3000
+  - API: http://localhost:8000
+  - OCR: internal only
+  - DB: internal only
+
+  Verification commands that passed:
+
+  PYTHONPATH=imageContainer ./.venv/bin/python -m pytest imageContainer/tests -q
+  # 5 passed
+
+  PYTHONPATH=informationHandler ./.venv/bin/python -m pytest informationHandler/tests -q
+  # 9 passed
+
+  cd web && npm run build
+  # passed
+
+  Important note:
+
+  - I registered a test user during endpoint verification:
+      - username: testuser
+      - email: testuser@example.com
+  - Use a different username/email, or reset volumes again if you want a clean DB.

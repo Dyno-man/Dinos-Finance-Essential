@@ -21,12 +21,22 @@ class Settings:
     cookie_secure: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"
     cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax")
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+    frontend_origins: str = os.getenv("FRONTEND_ORIGINS", "")
     login_rate_limit_attempts: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
     login_rate_limit_window_seconds: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
 
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def cors_origins(self) -> list[str]:
+        configured = [origin.strip() for origin in self.frontend_origins.split(",") if origin.strip()]
+        origins = configured or [self.frontend_origin]
+        for local_origin in ("http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"):
+            if local_origin not in origins:
+                origins.append(local_origin)
+        return origins
 
 
 settings = Settings()

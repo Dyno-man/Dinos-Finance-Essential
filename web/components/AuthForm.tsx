@@ -37,19 +37,24 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             password,
           };
 
-    const response = await browserApi(`/auth/${mode}`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    try {
+      const response = await browserApi(`/auth/${mode}`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
 
-    setLoading(false);
-    if (!response.ok) {
-      setError(mode === "login" ? "Invalid username or password." : "Unable to create account.");
-      return;
+      if (!response.ok) {
+        setError(mode === "login" ? "Invalid username or password." : "Unable to create account.");
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setError("Could not reach the API. Make sure the backend is running on http://localhost:8000.");
+    } finally {
+      setLoading(false);
     }
-
-    router.push("/dashboard");
-    router.refresh();
   }
 
   const isRegister = mode === "register";
