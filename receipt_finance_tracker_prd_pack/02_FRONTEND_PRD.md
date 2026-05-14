@@ -51,7 +51,7 @@ Sections:
 
 1. Hero.
 2. How it works.
-3. Upload, Signal, Gmail ingestion cards.
+3. Upload, Telegram, Gmail ingestion cards.
 4. Dashboard preview.
 5. Pricing.
 6. Sign up call to action.
@@ -228,13 +228,13 @@ Acceptance criteria:
 
 Sections:
 
-1. Signal.
+1. Telegram.
 2. Gmail.
 3. Future banking API placeholder, disabled.
 
-Signal section:
+Telegram section:
 
-1. Show linked Signal number if connected.
+1. Show linked Telegram number if connected.
 2. Button to start linking.
 3. Instructions for texting a receipt.
 4. Test message button if supported.

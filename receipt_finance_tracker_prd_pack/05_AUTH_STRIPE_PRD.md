@@ -58,7 +58,7 @@ Recommended MVP plans:
 
 1. Basic
    1. Higher receipt limit.
-   2. Signal ingestion.
+   2. Telegram ingestion.
    3. Gmail ingestion.
    4. CSV export.
    5. Advanced analytics.

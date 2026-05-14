@@ -28,13 +28,9 @@ Deploy Receipt Finance Tracker on a VPS using Docker, Nginx, PostgreSQL, persist
 4. `worker`
    1. Background ingestion jobs.
    2. Gmail scheduled ingestion.
-   3. Signal processing and retries.
+   3. Telegram processing and retries.
 
-5. `signal`
-   1. Signal bridge.
-   2. Internal only.
-
-6. `db`
+5. `db`
    1. PostgreSQL.
    2. Persistent volume.
 
@@ -52,7 +48,7 @@ Deploy Receipt Finance Tracker on a VPS using Docker, Nginx, PostgreSQL, persist
 5. Do not expose OCR service publicly.
 6. Persist database data.
 7. Persist uploaded receipt files.
-8. Persist Signal registration data.
+8. Persist Telegram mappings in PostgreSQL.
 9. Use `.env` for secrets.
 10. Use restart policy `unless-stopped`.
 
@@ -77,8 +73,9 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=
 GMAIL_TOKEN_ENCRYPTION_KEY=
-SIGNAL_SERVICE_URL=
-SIGNAL_INTERNAL_SECRET=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_REPLY_ENABLED=
 RECEIPT_STORAGE_PATH=
 MAX_UPLOAD_MB=
 ```
@@ -106,8 +103,7 @@ Back up:
 
 1. PostgreSQL database.
 2. Receipt upload volume.
-3. Signal data volume.
-4. `.env` stored securely outside repo.
+3. `.env` stored securely outside repo.
 
 Backup frequency:
 
@@ -128,7 +124,7 @@ Restore test:
 4. Nginx access and error logs.
 5. Stripe webhook logs without sensitive payload dumps.
 6. Gmail ingestion logs without full message bodies.
-7. Signal logs without full attachment contents.
+7. Telegram logs without full attachment contents.
 
 ## 8. Health Checks
 
@@ -147,7 +143,7 @@ Admin health page should show:
 3. Database status.
 4. Worker last heartbeat.
 5. Last Gmail ingestion.
-6. Signal service status.
+6. Telegram webhook status.
 7. Failed jobs count.
 
 ## 9. Migration Requirements
@@ -181,7 +177,7 @@ Rules:
 3. OCR service is not public.
 4. Uploads persist across restarts.
 5. Database persists across restarts.
-6. Signal registration persists across restarts.
+6. Telegram mappings persist across restarts.
 7. Restarting containers does not lose receipt data.
 8. Backups can be created with one command.
 9. Admin can see service health.

@@ -11,7 +11,7 @@ Prompt:
 ```text
 You are working in the Receipt Finance Tracker repository.
 
-Refactor the backend into a clean FastAPI API service and a separate OCR service while preserving the existing imageContainer and informationHandler idea. Add PostgreSQL database support with migrations. Create tables for users, subscriptions, receipts, receipt_images, ocr_results, categories, integration_connections, signal_mappings, gmail_connections, gmail_processed_messages, and ingestion_jobs.
+Refactor the backend into a clean FastAPI API service and a separate OCR service while preserving the existing imageContainer and informationHandler idea. Add PostgreSQL database support with migrations. Create tables for users, subscriptions, receipts, receipt_images, ocr_results, categories, integration_connections, telegram_mappings, gmail_connections, gmail_processed_messages, and ingestion_jobs.
 
 The OCR service should accept an uploaded image and return raw OCR text plus parsed total. The API service should own all database writes and call the OCR service. Add health endpoints. Add environment variable configuration. Add tests for receipt upload parsing where practical.
 
@@ -58,14 +58,14 @@ Implement analytics endpoints and front end charts for Receipt Finance Tracker. 
 Make sure totals match the filtered receipt list. Format amounts as currency. Handle empty states cleanly.
 ```
 
-## 7. Phase 6 Signal Integration
+## 7. Phase 6 Telegram Integration
 
 Prompt:
 
 ```text
-Add Signal bot ingestion using a self hosted Signal bridge service. Implement Signal linking by phone number and verification code. Add an internal endpoint or worker consumer for incoming Signal messages. When a linked Signal sender sends an image attachment, create a receipt with source signal, process it through OCR, store the result, and send a confirmation reply.
+Add Telegram bot ingestion using the official Telegram Bot API. Implement Telegram linking with a `/start CODE` verification flow. Add a webhook endpoint for incoming Telegram updates protected by `X-Telegram-Bot-Api-Secret-Token`. When a linked Telegram sender sends a photo or image document, create a receipt with source telegram, process it through OCR, store the result, and send a confirmation reply.
 
-Prevent duplicates by Signal message ID or attachment hash. Unknown senders should receive linking instructions. Keep Signal endpoints internal or protected by a shared secret.
+Prevent duplicates by Telegram update ID or attachment hash. Unknown senders should receive linking instructions.
 ```
 
 ## 8. Phase 7 Gmail Integration
@@ -93,7 +93,7 @@ Store subscription state in PostgreSQL. Enforce plan limits in the backend. Do n
 Prompt:
 
 ```text
-Create production Docker compose setup for Receipt Finance Tracker. Services should include web, api, ocr, worker, signal, db, and nginx. Expose only nginx publicly. Add persistent volumes for PostgreSQL, receipt uploads, and Signal data. Add Nginx HTTPS reverse proxy config, health checks, environment variable docs, backup scripts, and deployment instructions for a VPS.
+Create production Docker compose setup for Receipt Finance Tracker. Services should include web, api, ocr, worker, db, and nginx. Expose only nginx publicly. Add persistent volumes for PostgreSQL and receipt uploads. Add Nginx HTTPS reverse proxy config, health checks, environment variable docs, backup scripts, and deployment instructions for a VPS.
 
 Do not expose PostgreSQL or OCR directly to the internet.
 ```

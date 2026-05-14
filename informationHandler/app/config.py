@@ -24,6 +24,9 @@ class Settings:
     frontend_origins: str = os.getenv("FRONTEND_ORIGINS", "")
     login_rate_limit_attempts: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
     login_rate_limit_window_seconds: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
+    telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    telegram_webhook_secret: str = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    telegram_reply_enabled: bool = os.getenv("TELEGRAM_REPLY_ENABLED", "true").lower() == "true"
 
     @property
     def max_upload_bytes(self) -> int:

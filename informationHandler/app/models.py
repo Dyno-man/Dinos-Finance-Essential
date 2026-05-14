@@ -87,7 +87,7 @@ class Category(Base):
 class Receipt(Base):
     __tablename__ = "receipts"
     __table_args__ = (
-        CheckConstraint("source in ('web', 'signal', 'gmail', 'manual')", name="ck_receipts_source"),
+        CheckConstraint("source in ('web', 'telegram', 'gmail', 'manual')", name="ck_receipts_source"),
         CheckConstraint(
             "status in ('processing', 'pending_review', 'confirmed', 'failed')",
             name="ck_receipts_status",
@@ -156,7 +156,7 @@ class OCRResult(Base):
 class IntegrationConnection(Base):
     __tablename__ = "integration_connections"
     __table_args__ = (
-        CheckConstraint("provider in ('signal', 'gmail')", name="ck_integration_connections_provider"),
+        CheckConstraint("provider in ('telegram', 'gmail')", name="ck_integration_connections_provider"),
         CheckConstraint("status in ('active', 'disabled', 'pending')", name="ck_integration_connections_status"),
     )
 
@@ -169,15 +169,41 @@ class IntegrationConnection(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
-class SignalMapping(Base):
-    __tablename__ = "signal_mappings"
+class TelegramMapping(Base):
+    __tablename__ = "telegram_mappings"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_telegram_mappings_user_id"),)
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uuid_string)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    signal_number: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    telegram_user_id: Mapped[str | None] = mapped_column(String, unique=True)
+    telegram_chat_id: Mapped[str | None] = mapped_column(String)
+    telegram_username: Mapped[str | None] = mapped_column(String)
     linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verification_code_hash: Mapped[str | None] = mapped_column(Text)
+
+
+class TelegramMessage(Base):
+    __tablename__ = "telegram_messages"
+    __table_args__ = (
+        UniqueConstraint("telegram_update_id", name="uq_telegram_messages_update_id"),
+        CheckConstraint(
+            "status in ('received', 'linked', 'processed', 'duplicate', 'ignored', 'failed')",
+            name="ck_telegram_messages_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=uuid_string)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    telegram_update_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    telegram_message_id: Mapped[int | None] = mapped_column(Integer)
+    telegram_chat_id: Mapped[str | None] = mapped_column(String)
+    telegram_user_id: Mapped[str | None] = mapped_column(String)
+    raw_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
 class GmailConnection(Base):
@@ -213,7 +239,7 @@ class GmailProcessedMessage(Base):
 class IngestionJob(Base):
     __tablename__ = "ingestion_jobs"
     __table_args__ = (
-        CheckConstraint("source in ('web', 'signal', 'gmail', 'manual')", name="ck_ingestion_jobs_source"),
+        CheckConstraint("source in ('web', 'telegram', 'gmail', 'manual')", name="ck_ingestion_jobs_source"),
         CheckConstraint(
             "status in ('queued', 'processing', 'succeeded', 'failed', 'retrying')",
             name="ck_ingestion_jobs_status",

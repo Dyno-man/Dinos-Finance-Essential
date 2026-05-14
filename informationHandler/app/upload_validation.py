@@ -17,8 +17,7 @@ def upload_error(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
-async def read_valid_image(file: UploadFile) -> tuple[bytes, str, str]:
-    contents = await file.read()
+def validate_image_bytes(contents: bytes) -> tuple[str, str]:
     if not contents:
         raise upload_error(400, "empty_file", "Choose a receipt image before uploading.")
     if len(contents) > settings.max_upload_bytes:
@@ -39,4 +38,10 @@ async def read_valid_image(file: UploadFile) -> tuple[bytes, str, str]:
     if mime_type is None:
         raise upload_error(400, "invalid_file_type", "Upload a JPG, PNG, or WebP receipt image.")
 
-    return contents, hashlib.sha256(contents).hexdigest(), mime_type
+    return hashlib.sha256(contents).hexdigest(), mime_type
+
+
+async def read_valid_image(file: UploadFile) -> tuple[bytes, str, str]:
+    contents = await file.read()
+    digest, mime_type = validate_image_bytes(contents)
+    return contents, digest, mime_type

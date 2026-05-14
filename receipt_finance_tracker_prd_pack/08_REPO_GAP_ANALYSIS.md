@@ -20,7 +20,7 @@ The README says Next.js front end, but the repo currently appears mostly backend
 
 ### 2.2 No Multi User Auth Yet
 
-The app needs user accounts before adding Signal, Gmail, and Stripe because every receipt must belong to one user.
+The app needs user accounts before adding Telegram, Gmail, and Stripe because every receipt must belong to one user.
 
 ### 2.3 Database Schema Is Too Small
 
@@ -55,11 +55,11 @@ Uploaded images are saved in containers. The production version should:
 
 ### 2.6 No Background Job System Yet
 
-Gmail scheduled ingestion and Signal ingestion need a worker. The API request cycle should not handle every long running task directly.
+Gmail scheduled ingestion and Telegram ingestion need a worker. The API request cycle should not handle every long running task directly.
 
 ### 2.7 No Integration Ownership Model Yet
 
-Signal numbers and Gmail accounts must map to users. This requires integration tables and strict ownership checks.
+Telegram numbers and Gmail accounts must map to users. This requires integration tables and strict ownership checks.
 
 ### 2.8 No Billing Yet
 
@@ -67,21 +67,21 @@ Stripe requires subscription state, webhook verification, plan enforcement, and 
 
 ### 2.9 Docker Compose Needs Production Hardening
 
-Current compose exposes service ports directly. Production should expose only Nginx publicly, with internal networking for API, OCR, database, worker, and Signal.
+Current compose exposes service ports directly. Production should expose only Nginx publicly, with internal networking for API, OCR, database, worker, and Telegram.
 
 ## 3. Biggest Technical Risk Areas
 
-1. Signal bot setup and phone number registration.
+1. Telegram bot setup and webhook registration.
 2. Gmail OAuth and refresh token security.
 3. OCR reliability across receipt formats.
-4. Duplicate prevention across web, Gmail, and Signal.
+4. Duplicate prevention across web, Gmail, and Telegram.
 5. User ownership and data isolation.
 6. Stripe webhook correctness.
 7. VPS storage and backups.
 
 ## 4. Recommended Next Commit
 
-The best next commit should not be Signal or Gmail yet. The best next commit is:
+The best next commit should not be Telegram or Gmail yet. The best next commit is:
 
 1. Add database migrations.
 2. Add users table.

@@ -131,10 +131,233 @@ def test_analytics_only_uses_current_user_confirmed_receipts() -> None:
         session.add_all([receipt, pending, other_receipt, ocr_result])
         session.commit()
 
-        body = asyncio.run(analytics_summary(None, None, None, None, grant, session))
+        body = asyncio.run(analytics_summary(current_user=grant, session=session))
 
         assert body["total_cents"] == 2500
         assert body["confirmed_receipt_count"] == 1
-        assert body["receipt_count"] == 2
+        assert body["receipt_count"] == 1
         assert body["pending_review_count"] == 1
         assert body["category_spend"][0]["name"] == "Grocery"
+
+
+def test_analytics_can_include_pending_review_receipts() -> None:
+    session_factory = make_session_factory()
+    with session_factory() as session:
+        user = make_user(session, "grant")
+        confirmed = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Market",
+            amount_cents=2500,
+            purchased_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        )
+        pending = Receipt(
+            user_id=user.id,
+            source="web",
+            status="pending_review",
+            merchant_name="Market",
+            amount_cents=1100,
+            purchased_at=datetime(2026, 5, 2, tzinfo=timezone.utc),
+        )
+        processing = Receipt(user_id=user.id, source="web", status="processing", amount_cents=9999)
+        failed = Receipt(user_id=user.id, source="web", status="failed", amount_cents=9999)
+        session.add_all([confirmed, pending, processing, failed])
+        session.commit()
+
+        default_body = asyncio.run(analytics_summary(current_user=user, session=session))
+        included_body = asyncio.run(analytics_summary(include_pending=True, current_user=user, session=session))
+
+        assert default_body["total_cents"] == 2500
+        assert default_body["confirmed_receipt_count"] == 1
+        assert default_body["pending_review_count"] == 1
+        assert default_body["receipt_count"] == 1
+        assert included_body["total_cents"] == 3600
+        assert included_body["confirmed_receipt_count"] == 1
+        assert included_body["pending_review_count"] == 1
+        assert included_body["receipt_count"] == 2
+        assert included_body["average_receipt_cents"] == 1800
+
+
+def test_analytics_filters_match_receipt_list_filters() -> None:
+    session_factory = make_session_factory()
+    with session_factory() as session:
+        user = make_user(session, "grant")
+        other = make_user(session, "other")
+        grocery = Category(user_id=user.id, name="Grocery", color="#0f766e")
+        restaurant = Category(user_id=user.id, name="Restaurant", color="#dc2626")
+        session.add_all([grocery, restaurant])
+        session.flush()
+        included = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Corner Market",
+            amount_cents=2500,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        pending_included = Receipt(
+            user_id=user.id,
+            source="web",
+            status="pending_review",
+            merchant_name="Corner Market",
+            amount_cents=1200,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
+        )
+        wrong_category = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Corner Market",
+            amount_cents=3000,
+            category_id=restaurant.id,
+            purchased_at=datetime(2026, 5, 12, tzinfo=timezone.utc),
+        )
+        wrong_merchant = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Fuel Stop",
+            amount_cents=2500,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        wrong_source = Receipt(
+            user_id=user.id,
+            source="gmail",
+            status="confirmed",
+            merchant_name="Corner Market",
+            amount_cents=2500,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        too_small = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Corner Market",
+            amount_cents=500,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        too_large = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Corner Market",
+            amount_cents=5000,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        outside_date = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Corner Market",
+            amount_cents=2500,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        no_amount = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Corner Market",
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        deleted = Receipt(
+            user_id=user.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Corner Market",
+            amount_cents=2500,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+            deleted_at=datetime(2026, 5, 13, tzinfo=timezone.utc),
+        )
+        other_user = Receipt(
+            user_id=other.id,
+            source="web",
+            status="confirmed",
+            merchant_name="Corner Market",
+            amount_cents=2500,
+            category_id=grocery.id,
+            purchased_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        )
+        session.add_all(
+            [
+                included,
+                pending_included,
+                wrong_category,
+                wrong_merchant,
+                wrong_source,
+                too_small,
+                too_large,
+                outside_date,
+                no_amount,
+                deleted,
+                other_user,
+            ]
+        )
+        session.commit()
+
+        analytics = asyncio.run(
+            analytics_summary(
+                start_date="2026-05-01",
+                end_date="2026-05-31",
+                category_id=grocery.id,
+                source="web",
+                merchant="Corner",
+                min_amount_cents=1000,
+                max_amount_cents=3000,
+                include_pending=True,
+                current_user=user,
+                session=session,
+            )
+        )
+        listed = asyncio.run(
+            list_receipts(
+                user,
+                session,
+                start_date="2026-05-01",
+                end_date="2026-05-31",
+                category_id=grocery.id,
+                merchant="Corner",
+                source="web",
+                min_amount_cents=1000,
+                max_amount_cents=3000,
+            )
+        )
+        listed_spend = sum(receipt["amount_cents"] or 0 for receipt in listed["receipts"] if receipt["status"] in {"confirmed", "pending_review"})
+
+        assert listed["total"] == 2
+        assert analytics["receipt_count"] == 2
+        assert analytics["total_cents"] == 3700
+        assert analytics["total_cents"] == listed_spend
+        assert analytics["confirmed_receipt_count"] == 1
+        assert analytics["pending_review_count"] == 1
+        assert analytics["monthly_spend"] == [{"month": "2026-05", "amount_cents": 3700}]
+        assert analytics["category_spend"][0]["name"] == "Grocery"
+        assert analytics["merchant_spend"] == [{"merchant_name": "Corner Market", "amount_cents": 3700}]
+        assert analytics["source_counts"] == [{"source": "web", "count": 2}]
+
+
+def test_empty_analytics_returns_zero_totals() -> None:
+    session_factory = make_session_factory()
+    with session_factory() as session:
+        user = make_user(session, "grant")
+
+        body = asyncio.run(analytics_summary(current_user=user, session=session))
+
+        assert body["total_cents"] == 0
+        assert body["confirmed_receipt_count"] == 0
+        assert body["receipt_count"] == 0
+        assert body["average_receipt_cents"] == 0
+        assert body["pending_review_count"] == 0
+        assert body["monthly_spend"] == []
+        assert body["category_spend"] == []
+        assert body["merchant_spend"] == []
+        assert body["source_counts"] == []

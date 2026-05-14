@@ -414,6 +414,26 @@ form {
   gap: 10px;
 }
 
+.telegram-link-form label {
+  min-width: min(100%, 280px);
+}
+
+.form-message {
+  flex-basis: 100%;
+  min-height: 20px;
+}
+
+.checkbox-label {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  align-content: end;
+  min-height: 65px;
+}
+
+.checkbox-label input {
+  width: auto;
+}
+
 .upload-page {
   min-height: 420px;
   display: grid;

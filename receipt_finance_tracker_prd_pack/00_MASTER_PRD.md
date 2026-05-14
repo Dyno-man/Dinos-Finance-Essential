@@ -11,7 +11,7 @@
 
 Receipt Finance Tracker is a self hosted receipt ingestion and spending dashboard application. The current repository already has the core OCR direction in place: a FastAPI image processing container reads uploaded receipt images, extracts text through EasyOCR, finds a total value, and returns the detected cost. A second FastAPI information handler forwards uploaded images to the OCR service. PostgreSQL is already present in the Docker compose plan.
 
-The finished product should become a full web app where users can create accounts, upload receipts, text receipts through a Signal bot, connect Gmail receipt folders, review extracted receipt data, correct OCR mistakes, and view spending analytics by date, merchant, category, and source.
+The finished product should become a full web app where users can create accounts, upload receipts, text receipts through a Telegram bot, connect Gmail receipt folders, review extracted receipt data, correct OCR mistakes, and view spending analytics by date, merchant, category, and source.
 
 ## 2. Primary Goals
 
@@ -21,7 +21,7 @@ The finished product should become a full web app where users can create account
 4. Store receipts in a scalable multi user PostgreSQL schema.
 5. Support multiple receipt sources:
    1. Web upload.
-   2. Signal bot image upload.
+   2. Telegram bot image upload.
    3. Gmail receipt inbox ingestion.
 6. Add Stripe subscription billing so other users can sign up.
 7. Deploy the full system on a VPS using Docker, Nginx, HTTPS, background jobs, and backups.
@@ -72,7 +72,7 @@ The repo currently contains these important pieces:
 
 ### 5.1 Individual User
 
-A user wants to track spending by uploading physical receipts, forwarding email receipts, or texting receipt images to a Signal number. They want the least manual work possible, but they still need the ability to correct OCR mistakes.
+A user wants to track spending by uploading physical receipts, forwarding email receipts, or texting receipt images to a Telegram number. They want the least manual work possible, but they still need the ability to correct OCR mistakes.
 
 ### 5.2 Power User
 
@@ -97,15 +97,15 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 9. User saves corrections.
 10. Dashboard updates analytics.
 
-### 6.2 Signal Receipt Upload
+### 6.2 Telegram Receipt Upload
 
 1. User signs in.
 2. User opens integrations.
-3. User links their Signal phone number.
-4. User sends a receipt image to their assigned Signal bot number or linked Signal identity.
-5. Signal listener receives the message and attachment.
-6. Backend maps Signal sender to the correct app user.
-7. Backend creates receipt record with source `signal`.
+3. User links their Telegram account with `/start CODE`.
+4. User sends a receipt image to their assigned Telegram bot number or linked Telegram identity.
+5. Telegram listener receives the message and attachment.
+6. Backend maps Telegram sender to the correct app user.
+7. Backend creates receipt record with source `telegram`.
 8. OCR processes the image.
 9. User receives confirmation message with detected total and review link.
 
@@ -145,7 +145,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 8. Monthly spending chart.
 9. PostgreSQL multi user schema.
 10. OCR processing job status.
-11. Basic Signal ingestion.
+11. Basic Telegram ingestion.
 12. Basic Gmail daily ingestion.
 13. Stripe Checkout and subscription webhook.
 14. Docker compose production deployment.
@@ -161,7 +161,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 4. Search and filters.
 5. CSV export.
 6. Email ingestion failure retry.
-7. Signal confirmation message.
+7. Telegram confirmation message.
 8. Plan usage limits.
 
 ### Could Have
@@ -178,7 +178,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 3. OCR result appears within 15 seconds for normal receipt images.
 4. User can correct any OCR field before it affects analytics.
 5. Gmail ingestion can process a daily receipt label without duplicates.
-6. Signal ingestion correctly maps messages to the right user.
+6. Telegram ingestion correctly maps messages to the right user.
 7. Stripe webhook reliably updates subscription status.
 8. VPS deployment can restart containers without losing data.
 
@@ -192,7 +192,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 6. OCR result.
 7. Expense category.
 8. Integration connection.
-9. Signal sender mapping.
+9. Telegram sender mapping.
 10. Gmail connection.
 11. Gmail processed message.
 12. Ingestion job.
@@ -206,7 +206,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 4. Build web upload receipt flow.
 5. Add receipt review and edit flow.
 6. Add analytics pages.
-7. Add Signal ingestion.
+7. Add Telegram ingestion.
 8. Add Gmail ingestion.
 9. Add Stripe subscriptions.
 10. Add production VPS deployment hardening.
@@ -219,6 +219,6 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 4. Every OCR result stores both raw text and parsed fields.
 5. Every parsed field can be manually corrected.
 6. Deleting a receipt removes it from analytics.
-7. Gmail and Signal ingestion are idempotent and do not create duplicates.
+7. Gmail and Telegram ingestion are idempotent and do not create duplicates.
 8. Stripe subscription state is based on webhooks, not front end trust.
 9. The app can be deployed with one documented Docker compose production command.

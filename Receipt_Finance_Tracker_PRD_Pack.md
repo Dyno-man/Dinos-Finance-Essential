@@ -9,7 +9,7 @@
 
 Receipt Finance Tracker is a self hosted receipt ingestion and spending dashboard application. The current repository already has the core OCR direction in place: a FastAPI image processing container reads uploaded receipt images, extracts text through EasyOCR, finds a total value, and returns the detected cost. A second FastAPI information handler forwards uploaded images to the OCR service. PostgreSQL is already present in the Docker compose plan.
 
-The finished product should become a full web app where users can create accounts, upload receipts, text receipts through a Signal bot, connect Gmail receipt folders, review extracted receipt data, correct OCR mistakes, and view spending analytics by date, merchant, category, and source.
+The finished product should become a full web app where users can create accounts, upload receipts, text receipts through a Telegram bot, connect Gmail receipt folders, review extracted receipt data, correct OCR mistakes, and view spending analytics by date, merchant, category, and source.
 
 ## 2. Primary Goals
 
@@ -19,7 +19,7 @@ The finished product should become a full web app where users can create account
 4. Store receipts in a scalable multi user PostgreSQL schema.
 5. Support multiple receipt sources:
    1. Web upload.
-   2. Signal bot image upload.
+   2. Telegram bot image upload.
    3. Gmail receipt inbox ingestion.
 6. Add Stripe subscription billing so other users can sign up.
 7. Deploy the full system on a VPS using Docker, Nginx, HTTPS, background jobs, and backups.
@@ -70,7 +70,7 @@ The repo currently contains these important pieces:
 
 ### 5.1 Individual User
 
-A user wants to track spending by uploading physical receipts, forwarding email receipts, or texting receipt images to a Signal number. They want the least manual work possible, but they still need the ability to correct OCR mistakes.
+A user wants to track spending by uploading physical receipts, forwarding email receipts, or texting receipt images to a Telegram number. They want the least manual work possible, but they still need the ability to correct OCR mistakes.
 
 ### 5.2 Power User
 
@@ -95,15 +95,15 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 9. User saves corrections.
 10. Dashboard updates analytics.
 
-### 6.2 Signal Receipt Upload
+### 6.2 Telegram Receipt Upload
 
 1. User signs in.
 2. User opens integrations.
-3. User links their Signal phone number.
-4. User sends a receipt image to their assigned Signal bot number or linked Signal identity.
-5. Signal listener receives the message and attachment.
-6. Backend maps Signal sender to the correct app user.
-7. Backend creates receipt record with source `signal`.
+3. User links their Telegram account with `/start CODE`.
+4. User sends a receipt image to their assigned Telegram bot number or linked Telegram identity.
+5. Telegram listener receives the message and attachment.
+6. Backend maps Telegram sender to the correct app user.
+7. Backend creates receipt record with source `telegram`.
 8. OCR processes the image.
 9. User receives confirmation message with detected total and review link.
 
@@ -143,7 +143,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 8. Monthly spending chart.
 9. PostgreSQL multi user schema.
 10. OCR processing job status.
-11. Basic Signal ingestion.
+11. Basic Telegram ingestion.
 12. Basic Gmail daily ingestion.
 13. Stripe Checkout and subscription webhook.
 14. Docker compose production deployment.
@@ -159,7 +159,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 4. Search and filters.
 5. CSV export.
 6. Email ingestion failure retry.
-7. Signal confirmation message.
+7. Telegram confirmation message.
 8. Plan usage limits.
 
 ### Could Have
@@ -177,7 +177,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 3. OCR result appears within 15 seconds for normal receipt images.
 4. User can correct any OCR field before it affects analytics.
 5. Gmail ingestion can process a daily receipt label without duplicates.
-6. Signal ingestion correctly maps messages to the right user.
+6. Telegram ingestion correctly maps messages to the right user.
 7. Stripe webhook reliably updates subscription status.
 8. VPS deployment can restart containers without losing data.
 
@@ -191,7 +191,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 6. OCR result.
 7. Expense category.
 8. Integration connection.
-9. Signal sender mapping.
+9. Telegram sender mapping.
 10. Gmail connection.
 11. Gmail processed message.
 12. Ingestion job.
@@ -205,7 +205,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 4. Build web upload receipt flow.
 5. Add receipt review and edit flow.
 6. Add analytics pages.
-7. Add Signal ingestion.
+7. Add Telegram ingestion.
 8. Add Gmail ingestion.
 9. Add Stripe subscriptions.
 10. Add production VPS deployment hardening.
@@ -218,7 +218,7 @@ The app owner needs to manage users, subscriptions, ingestion health, failed OCR
 4. Every OCR result stores both raw text and parsed fields.
 5. Every parsed field can be manually corrected.
 6. Deleting a receipt removes it from analytics.
-7. Gmail and Signal ingestion are idempotent and do not create duplicates.
+7. Gmail and Telegram ingestion are idempotent and do not create duplicates.
 8. Stripe subscription state is based on webhooks, not front end trust.
 9. The app can be deployed with one documented Docker compose production command.
 
@@ -276,13 +276,13 @@ The current repo already separates image processing from request handling:
 4. `worker`
    1. Background job processor.
    2. Handles Gmail scheduled ingestion.
-   3. Handles Signal message ingestion if not event driven.
+   3. Handles Telegram message ingestion if not event driven.
    4. Handles OCR retry jobs.
    5. Can be built as a separate FastAPI worker process or a Python script container.
 
-5. `signal`
-   1. Signal bridge using signal cli rest api or similar.
-   2. Receives and sends Signal messages.
+5. `telegram`
+   1. Telegram Bot API webhook.
+   2. Receives and sends Telegram messages.
    3. Stores attachments temporarily.
 
 6. `db`
@@ -350,7 +350,7 @@ Fields:
 
 Constraints:
 
-1. source must be one of `web`, `signal`, `gmail`, `manual`.
+1. source must be one of `web`, `telegram`, `gmail`, `manual`.
 2. status must be one of `processing`, `pending_review`, `confirmed`, `failed`.
 3. Unique nullable duplicate prevention index on user_id, source, source_external_id where source_external_id is not null.
 
@@ -425,18 +425,20 @@ Fields:
 
 Provider values:
 
-1. `signal`.
+1. `telegram`.
 2. `gmail`.
 
-### 4.8 signal_mappings
+### 4.8 telegram_mappings
 
-Purpose: map Signal sender phone numbers to app users.
+Purpose: map Telegram bot users to app users.
 
 Fields:
 
 1. id UUID primary key.
 2. user_id UUID references users not null.
-3. signal_number text not null unique.
+3. telegram_user_id text nullable unique
+4. telegram_chat_id text nullable
+5. telegram_username text nullable.
 4. linked_at timestamptz not null.
 5. verified_at timestamptz nullable.
 6. verification_code_hash text nullable.
@@ -556,8 +558,8 @@ Rules:
 ### Integrations
 
 1. GET `/integrations`.
-2. POST `/integrations/signal/link`.
-3. DELETE `/integrations/signal`.
+2. POST `/integrations/telegram/link`.
+3. DELETE `/integrations/telegram`.
 4. GET `/integrations/gmail/start`.
 5. GET `/integrations/gmail/callback`.
 6. PATCH `/integrations/gmail/settings`.
@@ -609,7 +611,7 @@ Future compatible abstraction:
 6. Temporary files must be removed.
 7. OAuth tokens must be encrypted at rest.
 8. Stripe webhooks must verify Stripe signatures.
-9. Signal webhook endpoints must reject unauthorized internal requests.
+9. Telegram webhook endpoints must reject unauthorized internal requests.
 10. API should apply request rate limits to auth and upload endpoints.
 
 ## 10. Acceptance Criteria
@@ -620,7 +622,7 @@ Future compatible abstraction:
 4. A failed OCR job marks receipt as `failed` and shows an error.
 5. Retrying a failed job does not create duplicate receipts.
 6. Gmail message IDs cannot be processed twice for the same user.
-7. Signal sender phone number maps to exactly one user.
+7. Telegram user ID maps to exactly one app user.
 8. Deleting a user disables login and prevents new ingestion.
 
 
@@ -674,7 +676,7 @@ Sections:
 
 1. Hero.
 2. How it works.
-3. Upload, Signal, Gmail ingestion cards.
+3. Upload, Telegram, Gmail ingestion cards.
 4. Dashboard preview.
 5. Pricing.
 6. Sign up call to action.
@@ -851,13 +853,13 @@ Acceptance criteria:
 
 Sections:
 
-1. Signal.
+1. Telegram.
 2. Gmail.
 3. Future banking API placeholder, disabled.
 
-Signal section:
+Telegram section:
 
-1. Show linked Signal number if connected.
+1. Show linked Telegram number if connected.
 2. Button to start linking.
 3. Instructions for texting a receipt.
 4. Test message button if supported.
@@ -969,48 +971,48 @@ Use a central API client. Include authentication aware routing. Build reusable c
 ```
 
 
-<!-- 03_SIGNAL_BOT_PRD.md -->
+<!-- 03_TELEGRAM_BOT_PRD.md -->
 
 
-# Signal Bot Integration Product Requirements Document
+# Telegram Bot Integration Product Requirements Document
 
 ## 1. Purpose
 
-Allow each user to text receipt images directly to the app through Signal. The app should process the image with the existing OCR pipeline, save the receipt under the correct user, and optionally send a confirmation message back through Signal.
+Allow each user to send receipt images directly to the app through a Telegram bot. The app should process the image with the existing OCR pipeline, save the receipt under the correct user, and optionally send a confirmation reply through Telegram.
 
 ## 2. Integration Approach
 
-Use a self hosted Signal bridge container such as `signal-cli-rest-api` so the VPS can receive Signal messages and attachments through an internal HTTP API. The app should not attempt to implement the Signal protocol itself.
+Use the official Telegram Bot API. Telegram delivers updates to a public webhook endpoint protected by Telegram's webhook secret token. The app downloads image files from Telegram with the configured bot token and does not run a separate bridge service.
 
 Recommended design:
 
-1. Run Signal bridge as its own Docker service.
-2. Register or link a Signal number controlled by the app owner.
-3. Use the bridge to receive messages and attachments.
-4. Map sender phone numbers to app users.
-5. Process incoming image attachments as receipt uploads.
-6. Send confirmation messages back to the sender.
+1. Create a Telegram bot through BotFather.
+2. Configure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET`.
+3. Register the backend `/telegram/webhook` URL with Telegram using the same secret token.
+4. Link users with a `/start CODE` flow.
+5. Map Telegram user and chat IDs to app users.
+6. Process incoming photo or image document attachments as receipt uploads.
+7. Send confirmation messages back to the Telegram chat.
 
 ## 3. User Flow
 
-### 3.1 Link Signal Number
+### 3.1 Link Telegram Account
 
 1. User signs in.
 2. User opens Integrations.
-3. User selects Connect Signal.
-4. App asks for the user's Signal phone number.
-5. App generates a verification code.
-6. User sends the code to the app Signal bot.
-7. Signal listener receives the message.
-8. App verifies the code.
-9. App stores the sender number as linked.
+3. User selects Connect Telegram.
+4. App generates a verification code.
+5. User sends `/start CODE` to the Telegram bot.
+6. Telegram calls the app webhook.
+7. App verifies the code.
+8. App stores Telegram user ID, chat ID, and optional username as linked.
 
-### 3.2 Upload Receipt Through Signal
+### 3.2 Upload Receipt Through Telegram
 
-1. User sends receipt image to app Signal number.
-2. Signal bridge receives message.
-3. Worker downloads attachment.
-4. Backend creates receipt with source `signal`.
+1. User sends a receipt photo or image document to the bot.
+2. Telegram calls the webhook with the message update.
+3. Backend downloads the image from Telegram.
+4. Backend creates a receipt with source `telegram`.
 5. OCR service extracts raw text and total.
 6. Backend stores OCR result.
 7. Backend sends reply:
@@ -1021,19 +1023,19 @@ Recommended design:
 1. User sends unsupported file.
 2. App responds:
    `I could not process that file. Please send a JPG, PNG, or WebP receipt image.`
-3. Failure is logged in ingestion jobs.
+3. Failure is logged against the Telegram update.
 
 ## 4. Requirements
 
 ### Must Have
 
-1. Signal connection status on integrations page.
-2. User phone number verification.
-3. Incoming image attachment support.
-4. Mapping from Signal sender to user.
-5. Receipt creation with source `signal`.
+1. Telegram connection status on integrations page.
+2. `/start CODE` verification.
+3. Incoming photo and image document support.
+4. Mapping from Telegram sender to user.
+5. Receipt creation with source `telegram`.
 6. OCR processing through existing OCR service.
-7. Duplicate prevention based on Signal message ID or attachment hash.
+7. Duplicate prevention based on Telegram update ID or attachment hash.
 8. Confirmation reply after successful receipt creation.
 9. Friendly error reply after failure.
 
@@ -1043,24 +1045,22 @@ Recommended design:
 2. Support text like `category grocery`.
 3. Allow user to text `help`.
 4. Allow user to text `unlink`.
-5. Admin page for Signal service health.
+5. Admin page for Telegram webhook health.
 
 ### Could Have
 
 1. Natural language corrections by text.
-2. Monthly spending summaries over Signal.
-3. Budget alerts over Signal.
+2. Monthly spending summaries over Telegram.
+3. Budget alerts over Telegram.
 
 ## 5. Backend Endpoints
 
-### POST `/integrations/signal/link`
+### POST `/integrations/telegram/link`
 
 Request:
 
 ```json
-{
-  "signal_number": "+15551234567"
-}
+{}
 ```
 
 Response:
@@ -1068,32 +1068,15 @@ Response:
 ```json
 {
   "status": "pending_verification",
-  "message": "Send code 123456 to the Signal bot."
+  "message": "Send /start 123456 to the Telegram bot."
 }
 ```
 
-### POST `/internal/signal/message`
+### POST `/telegram/webhook`
 
-Internal endpoint called by the Signal listener or worker.
+Webhook endpoint called by Telegram. Requests must include `X-Telegram-Bot-Api-Secret-Token`.
 
-Request:
-
-```json
-{
-  "message_id": "signal_message_id",
-  "sender_number": "+15551234567",
-  "received_at": "2026-05-12T12:00:00Z",
-  "text": "optional text",
-  "attachments": [
-    {
-      "attachment_id": "abc",
-      "filename": "receipt.jpg",
-      "mime_type": "image/jpeg",
-      "storage_path": "/tmp/signal/receipt.jpg"
-    }
-  ]
-}
-```
+Request shape follows Telegram's update object. The app handles private-message updates containing `text`, `photo`, or image `document` payloads.
 
 Response:
 
@@ -1106,60 +1089,52 @@ Response:
 
 ## 6. Database Additions
 
-Use the `signal_mappings` table from the architecture PRD.
+Use the `telegram_mappings` table from the architecture PRD.
 
-Add optional table `signal_messages`:
+Add optional table `telegram_messages`:
 
 1. id UUID primary key.
 2. user_id UUID references users nullable.
-3. sender_number text not null.
-4. signal_message_id text not null unique.
-5. raw_payload jsonb not null.
-6. processed_at timestamptz nullable.
-7. status text not null.
-8. error_message text nullable.
-9. created_at timestamptz not null.
+3. telegram_update_id integer not null unique.
+4. telegram_message_id integer nullable.
+5. telegram_chat_id text nullable.
+6. telegram_user_id text nullable.
+7. raw_payload jsonb not null.
+8. processed_at timestamptz nullable.
+9. status text not null.
+10. error_message text nullable.
+11. created_at timestamptz not null.
 
 ## 7. Security Requirements
 
-1. Internal Signal endpoint must not be public.
-2. Use Docker internal network or shared secret header.
-3. Never log full message attachment contents.
-4. Never expose linked phone numbers to other users.
-5. Store only needed Signal metadata.
-6. Allow user to unlink Signal.
-7. Rate limit messages per sender.
-8. Validate file type and size before OCR.
+1. Webhook must validate Telegram's secret token header.
+2. Never log full message attachment contents.
+3. Never expose linked Telegram IDs to other users.
+4. Store only needed Telegram metadata.
+5. Allow user to unlink Telegram.
+6. Rate limit messages per sender.
+7. Validate file type and size before OCR.
 
 ## 8. Docker Compose Requirements
 
-Add service:
+No Telegram service is required. The API service needs:
 
 ```yaml
-signal:
-  image: bbernhard/signal-cli-rest-api:latest
-  restart: unless-stopped
-  volumes:
-    - signal-data:/home/.local/share/signal-cli
-  environment:
-    - MODE=json-rpc
-  networks:
-    - internal
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_REPLY_ENABLED=true
 ```
-
-Exact configuration may change based on chosen Signal bridge mode.
 
 ## 9. Acceptance Criteria
 
-1. User can link a Signal number.
-2. User can send a receipt image by Signal.
+1. User can link a Telegram account with `/start CODE`.
+2. User can send a receipt image by Telegram.
 3. App creates a receipt owned by that user.
-4. Receipt source is `signal`.
+4. Receipt source is `telegram`.
 5. OCR result is stored.
 6. User receives a confirmation message.
-7. Duplicate Signal messages do not create duplicate receipts.
+7. Duplicate Telegram updates do not create duplicate receipts.
 8. Unknown senders receive a linking instruction.
-9. Signal service restart does not erase registration data.
 
 
 <!-- 04_GMAIL_INGESTION_PRD.md -->
@@ -1412,7 +1387,7 @@ Recommended MVP plans:
 
 2. Pro
    1. Higher receipt limit.
-   2. Signal ingestion.
+   2. Telegram ingestion.
    3. Gmail ingestion.
    4. CSV export.
    5. Advanced analytics.
@@ -1452,7 +1427,7 @@ Backend should enforce limits, not just the front end.
 Examples:
 
 1. Free plan can upload only 50 receipts per month.
-2. Free plan cannot enable Signal.
+2. Free plan cannot enable Telegram.
 3. Free plan cannot enable Gmail.
 4. Disabled subscription cannot create new ingestion jobs.
 
@@ -1592,10 +1567,10 @@ Deploy Receipt Finance Tracker on a VPS using Docker, Nginx, PostgreSQL, persist
 4. `worker`
    1. Background ingestion jobs.
    2. Gmail scheduled ingestion.
-   3. Signal processing and retries.
+   3. Telegram processing and retries.
 
-5. `signal`
-   1. Signal bridge.
+5. `telegram`
+   1. Telegram bridge.
    2. Internal only.
 
 6. `db`
@@ -1616,7 +1591,7 @@ Deploy Receipt Finance Tracker on a VPS using Docker, Nginx, PostgreSQL, persist
 5. Do not expose OCR service publicly.
 6. Persist database data.
 7. Persist uploaded receipt files.
-8. Persist Signal registration data.
+8. Persist Telegram registration data.
 9. Use `.env` for secrets.
 10. Use restart policy `unless-stopped`.
 
@@ -1641,8 +1616,8 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=
 GMAIL_TOKEN_ENCRYPTION_KEY=
-SIGNAL_SERVICE_URL=
-SIGNAL_INTERNAL_SECRET=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
 RECEIPT_STORAGE_PATH=
 MAX_UPLOAD_MB=
 ```
@@ -1670,7 +1645,7 @@ Back up:
 
 1. PostgreSQL database.
 2. Receipt upload volume.
-3. Signal data volume.
+3. Persistent Telegram mappings volume.
 4. `.env` stored securely outside repo.
 
 Backup frequency:
@@ -1692,7 +1667,7 @@ Restore test:
 4. Nginx access and error logs.
 5. Stripe webhook logs without sensitive payload dumps.
 6. Gmail ingestion logs without full message bodies.
-7. Signal logs without full attachment contents.
+7. Telegram logs without full attachment contents.
 
 ## 8. Health Checks
 
@@ -1711,7 +1686,7 @@ Admin health page should show:
 3. Database status.
 4. Worker last heartbeat.
 5. Last Gmail ingestion.
-6. Signal service status.
+6. Telegram service status.
 7. Failed jobs count.
 
 ## 9. Migration Requirements
@@ -1745,7 +1720,7 @@ Rules:
 3. OCR service is not public.
 4. Uploads persist across restarts.
 5. Database persists across restarts.
-6. Signal registration persists across restarts.
+6. Telegram registration persists across restarts.
 7. Restarting containers does not lose receipt data.
 8. Backups can be created with one command.
 9. Admin can see service health.
@@ -1767,7 +1742,7 @@ Prompt:
 ```text
 You are working in the Receipt Finance Tracker repository.
 
-Refactor the backend into a clean FastAPI API service and a separate OCR service while preserving the existing imageContainer and informationHandler idea. Add PostgreSQL database support with migrations. Create tables for users, subscriptions, receipts, receipt_images, ocr_results, categories, integration_connections, signal_mappings, gmail_connections, gmail_processed_messages, and ingestion_jobs.
+Refactor the backend into a clean FastAPI API service and a separate OCR service while preserving the existing imageContainer and informationHandler idea. Add PostgreSQL database support with migrations. Create tables for users, subscriptions, receipts, receipt_images, ocr_results, categories, integration_connections, telegram_mappings, gmail_connections, gmail_processed_messages, and ingestion_jobs.
 
 The OCR service should accept an uploaded image and return raw OCR text plus parsed total. The API service should own all database writes and call the OCR service. Add health endpoints. Add environment variable configuration. Add tests for receipt upload parsing where practical.
 
@@ -1814,14 +1789,14 @@ Implement analytics endpoints and front end charts for Receipt Finance Tracker. 
 Make sure totals match the filtered receipt list. Format amounts as currency. Handle empty states cleanly.
 ```
 
-## 7. Phase 6 Signal Integration
+## 7. Phase 6 Telegram Integration
 
 Prompt:
 
 ```text
-Add Signal bot ingestion using a self hosted Signal bridge service. Implement Signal linking by phone number and verification code. Add an internal endpoint or worker consumer for incoming Signal messages. When a linked Signal sender sends an image attachment, create a receipt with source signal, process it through OCR, store the result, and send a confirmation reply.
+Add Telegram bot ingestion using the official Telegram Bot API. Implement Telegram linking with a `/start CODE` verification flow. Add a webhook endpoint for incoming Telegram updates protected by Telegram secret header. When a linked Telegram sender sends an image attachment, create a receipt with source telegram, process it through OCR, store the result, and send a confirmation reply.
 
-Prevent duplicates by Signal message ID or attachment hash. Unknown senders should receive linking instructions. Keep Signal endpoints internal or protected by a shared secret.
+Prevent duplicates by Telegram update ID or attachment hash. Unknown senders should receive linking instructions.
 ```
 
 ## 8. Phase 7 Gmail Integration
@@ -1849,7 +1824,7 @@ Store subscription state in PostgreSQL. Enforce plan limits in the backend. Do n
 Prompt:
 
 ```text
-Create production Docker compose setup for Receipt Finance Tracker. Services should include web, api, ocr, worker, signal, db, and nginx. Expose only nginx publicly. Add persistent volumes for PostgreSQL, receipt uploads, and Signal data. Add Nginx HTTPS reverse proxy config, health checks, environment variable docs, backup scripts, and deployment instructions for a VPS.
+Create production Docker compose setup for Receipt Finance Tracker. Services should include web, api, ocr, worker, db, and nginx. Expose only nginx publicly. Add persistent volumes for PostgreSQL, receipt uploads, and Persistent Telegram mappings. Add Nginx HTTPS reverse proxy config, health checks, environment variable docs, backup scripts, and deployment instructions for a VPS.
 
 Do not expose PostgreSQL or OCR directly to the internet.
 ```
@@ -1888,7 +1863,7 @@ The README says Next.js front end, but the repo currently appears mostly backend
 
 ### 2.2 No Multi User Auth Yet
 
-The app needs user accounts before adding Signal, Gmail, and Stripe because every receipt must belong to one user.
+The app needs user accounts before adding Telegram, Gmail, and Stripe because every receipt must belong to one user.
 
 ### 2.3 Database Schema Is Too Small
 
@@ -1923,11 +1898,11 @@ Uploaded images are saved in containers. The production version should:
 
 ### 2.6 No Background Job System Yet
 
-Gmail scheduled ingestion and Signal ingestion need a worker. The API request cycle should not handle every long running task directly.
+Gmail scheduled ingestion and Telegram ingestion need a worker. The API request cycle should not handle every long running task directly.
 
 ### 2.7 No Integration Ownership Model Yet
 
-Signal numbers and Gmail accounts must map to users. This requires integration tables and strict ownership checks.
+Telegram numbers and Gmail accounts must map to users. This requires integration tables and strict ownership checks.
 
 ### 2.8 No Billing Yet
 
@@ -1935,21 +1910,21 @@ Stripe requires subscription state, webhook verification, plan enforcement, and 
 
 ### 2.9 Docker Compose Needs Production Hardening
 
-Current compose exposes service ports directly. Production should expose only Nginx publicly, with internal networking for API, OCR, database, worker, and Signal.
+Current compose exposes service ports directly. Production should expose only Nginx publicly, with internal networking for API, OCR, database, worker, and Telegram.
 
 ## 3. Biggest Technical Risk Areas
 
-1. Signal bot setup and phone number registration.
+1. Telegram bot setup and webhook registration.
 2. Gmail OAuth and refresh token security.
 3. OCR reliability across receipt formats.
-4. Duplicate prevention across web, Gmail, and Signal.
+4. Duplicate prevention across web, Gmail, and Telegram.
 5. User ownership and data isolation.
 6. Stripe webhook correctness.
 7. VPS storage and backups.
 
 ## 4. Recommended Next Commit
 
-The best next commit should not be Signal or Gmail yet. The best next commit is:
+The best next commit should not be Telegram or Gmail yet. The best next commit is:
 
 1. Add database migrations.
 2. Add users table.

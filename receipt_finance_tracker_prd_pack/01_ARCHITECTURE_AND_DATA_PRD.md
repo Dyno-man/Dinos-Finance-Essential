@@ -54,19 +54,14 @@ The current repo already separates image processing from request handling:
 4. `worker`
    1. Background job processor.
    2. Handles Gmail scheduled ingestion.
-   3. Handles Signal message ingestion if not event driven.
+   3. Handles Telegram message ingestion if not event driven.
    4. Handles OCR retry jobs.
    5. Can be built as a separate FastAPI worker process or a Python script container.
 
-5. `signal`
-   1. Signal bridge using signal cli rest api or similar.
-   2. Receives and sends Signal messages.
-   3. Stores attachments temporarily.
-
-6. `db`
+5. `db`
    1. PostgreSQL.
 
-7. `nginx`
+6. `nginx`
    1. Reverse proxy.
    2. HTTPS termination.
    3. Routes app domain to web and API.
@@ -128,7 +123,7 @@ Fields:
 
 Constraints:
 
-1. source must be one of `web`, `signal`, `gmail`, `manual`.
+1. source must be one of `web`, `telegram`, `gmail`, `manual`.
 2. status must be one of `processing`, `pending_review`, `confirmed`, `failed`.
 3. Unique nullable duplicate prevention index on user_id, source, source_external_id where source_external_id is not null.
 
@@ -203,21 +198,23 @@ Fields:
 
 Provider values:
 
-1. `signal`.
+1. `telegram`.
 2. `gmail`.
 
-### 4.8 signal_mappings
+### 4.8 telegram_mappings
 
-Purpose: map Signal sender phone numbers to app users.
+Purpose: map Telegram bot users to app users.
 
 Fields:
 
 1. id UUID primary key.
 2. user_id UUID references users not null.
-3. signal_number text not null unique.
-4. linked_at timestamptz not null.
-5. verified_at timestamptz nullable.
-6. verification_code_hash text nullable.
+3. telegram_user_id text nullable unique.
+4. telegram_chat_id text nullable.
+5. telegram_username text nullable.
+6. linked_at timestamptz not null.
+7. verified_at timestamptz nullable.
+8. verification_code_hash text nullable.
 
 ### 4.9 gmail_connections
 
@@ -334,8 +331,8 @@ Rules:
 ### Integrations
 
 1. GET `/integrations`.
-2. POST `/integrations/signal/link`.
-3. DELETE `/integrations/signal`.
+2. POST `/integrations/telegram/link`.
+3. DELETE `/integrations/telegram`.
 4. GET `/integrations/gmail/start`.
 5. GET `/integrations/gmail/callback`.
 6. PATCH `/integrations/gmail/settings`.
@@ -387,7 +384,7 @@ Future compatible abstraction:
 6. Temporary files must be removed.
 7. OAuth tokens must be encrypted at rest.
 8. Stripe webhooks must verify Stripe signatures.
-9. Signal webhook endpoints must reject unauthorized internal requests.
+9. Telegram webhook endpoints must verify Telegram's webhook secret token.
 10. API should apply request rate limits to auth and upload endpoints.
 
 ## 10. Acceptance Criteria
@@ -398,5 +395,5 @@ Future compatible abstraction:
 4. A failed OCR job marks receipt as `failed` and shows an error.
 5. Retrying a failed job does not create duplicate receipts.
 6. Gmail message IDs cannot be processed twice for the same user.
-7. Signal sender phone number maps to exactly one user.
+7. Telegram user ID maps to exactly one app user.
 8. Deleting a user disables login and prevents new ingestion.

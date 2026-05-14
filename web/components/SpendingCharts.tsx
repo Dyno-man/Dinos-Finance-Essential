@@ -3,9 +3,11 @@ import { formatCurrency } from "@/lib/format";
 export function BarChart({
   title,
   rows,
+  emptyMessage = "No confirmed receipt data yet.",
 }: {
   title: string;
   rows: { label: string; value: number; color?: string | null }[];
+  emptyMessage?: string;
 }) {
   const max = Math.max(...rows.map((row) => row.value), 0);
   return (
@@ -14,7 +16,7 @@ export function BarChart({
         <h2>{title}</h2>
       </div>
       {rows.length === 0 ? (
-        <p className="muted">No confirmed receipt data yet.</p>
+        <p className="muted">{emptyMessage}</p>
       ) : (
         <div className="bar-list">
           {rows.map((row) => (

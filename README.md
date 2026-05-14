@@ -138,3 +138,37 @@ Oooo I also keep forgetting I need to make a couple of different dicts so that I
       - username: testuser
       - email: testuser@example.com
   - Use a different username/email, or reset volumes again if you want a clean DB.
+
+
+   Implemented analytics updates:
+
+  - Extended /analytics/summary with:
+      - merchant
+      - min_amount_cents
+      - max_amount_cents
+      - include_pending
+  - Analytics now:
+      - Defaults to confirmed receipts only.
+      - Includes pending-review receipts only with include_pending=true.
+      - Excludes deleted receipts, failed/processing receipts, and receipts without amounts from spend totals.
+      - Uses filters matching the receipt list.
+  - Updated the Analytics page with:
+      - Merchant filter
+      - Min/max amount filters
+      - Include pending review checkbox
+      - Clear filters link
+      - Better empty-state messages
+  - Updated chart component:
+      - BarChart now accepts a custom empty message.
+      - Amounts remain formatted as currency.
+  - Added backend test coverage for:
+      - Confirmed-only default analytics
+      - Including pending-review receipts
+      - Matching receipt-list filters
+      - Empty analytics state
+
+  Verification:
+
+  - Backend tests: 22 passed
+  - Web build: passed
+  - git diff --check: clean

@@ -82,7 +82,7 @@ def upgrade() -> None:
         sa.Column("notes", sa.Text(), nullable=True),
         *timestamps(),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
-        sa.CheckConstraint("source in ('web', 'signal', 'gmail', 'manual')", name="ck_receipts_source"),
+        sa.CheckConstraint("source in ('web', 'telegram', 'gmail', 'manual')", name="ck_receipts_source"),
         sa.CheckConstraint(
             "status in ('processing', 'pending_review', 'confirmed', 'failed')",
             name="ck_receipts_status",
@@ -130,20 +130,23 @@ def upgrade() -> None:
         sa.Column("status", sa.Text(), server_default="active", nullable=False),
         sa.Column("display_name", sa.Text(), nullable=True),
         *timestamps(),
-        sa.CheckConstraint("provider in ('signal', 'gmail')", name="ck_integration_connections_provider"),
+        sa.CheckConstraint("provider in ('telegram', 'gmail')", name="ck_integration_connections_provider"),
         sa.CheckConstraint("status in ('active', 'disabled', 'pending')", name="ck_integration_connections_status"),
     )
 
     op.create_table(
-        "signal_mappings",
+        "telegram_mappings",
         sa.Column("id", uuid_type, primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("user_id", uuid_type, sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("signal_number", sa.Text(), nullable=False),
+        sa.Column("telegram_user_id", sa.Text(), nullable=True),
+        sa.Column("telegram_chat_id", sa.Text(), nullable=True),
+        sa.Column("telegram_username", sa.Text(), nullable=True),
         sa.Column("linked_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("verification_code_hash", sa.Text(), nullable=True),
     )
-    op.create_unique_constraint("uq_signal_mappings_signal_number", "signal_mappings", ["signal_number"])
+    op.create_unique_constraint("uq_telegram_mappings_user_id", "telegram_mappings", ["user_id"])
+    op.create_unique_constraint("uq_telegram_mappings_user", "telegram_mappings", ["telegram_user_id"])
 
     op.create_table(
         "gmail_connections",
@@ -188,7 +191,7 @@ def upgrade() -> None:
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("run_after", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         *timestamps(),
-        sa.CheckConstraint("source in ('web', 'signal', 'gmail', 'manual')", name="ck_ingestion_jobs_source"),
+        sa.CheckConstraint("source in ('web', 'telegram', 'gmail', 'manual')", name="ck_ingestion_jobs_source"),
         sa.CheckConstraint(
             "status in ('queued', 'processing', 'succeeded', 'failed', 'retrying')",
             name="ck_ingestion_jobs_status",
@@ -218,8 +221,9 @@ def downgrade() -> None:
     op.drop_constraint("uq_gmail_processed_user_message", "gmail_processed_messages", type_="unique")
     op.drop_table("gmail_processed_messages")
     op.drop_table("gmail_connections")
-    op.drop_constraint("uq_signal_mappings_signal_number", "signal_mappings", type_="unique")
-    op.drop_table("signal_mappings")
+    op.drop_constraint("uq_telegram_mappings_user", "telegram_mappings", type_="unique")
+    op.drop_constraint("uq_telegram_mappings_user_id", "telegram_mappings", type_="unique")
+    op.drop_table("telegram_mappings")
     op.drop_table("integration_connections")
     op.drop_table("ocr_results")
     op.drop_table("receipt_images")

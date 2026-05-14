@@ -58,7 +58,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams?: Pr
             <select name="source" defaultValue={valueOfParam(params.source) ?? ""}>
               <option value="">All sources</option>
               <option value="web">Web</option>
-              <option value="signal">Signal</option>
+              <option value="telegram">Telegram</option>
               <option value="gmail">Gmail</option>
               <option value="manual">Manual</option>
             </select>
